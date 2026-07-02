@@ -6,6 +6,10 @@ provider "aws" {
 
 resource "aws_vpc" "main" {
   cidr_block = var.vpc_cidr
+
+  tags = {
+    Name = "${var.environment}-vpc-v2"
+  }
 }
 
 # ---------------- SUBNETS ----------------
@@ -15,6 +19,10 @@ resource "aws_subnet" "public_1" {
   cidr_block              = var.public_subnet_1_cidr
   availability_zone       = "ap-south-1a"
   map_public_ip_on_launch = true
+
+  tags = {
+    Name = "${var.environment}-public-subnet-1-v2"
+  }
 }
 
 resource "aws_subnet" "public_2" {
@@ -22,24 +30,40 @@ resource "aws_subnet" "public_2" {
   cidr_block              = var.public_subnet_2_cidr
   availability_zone       = "ap-south-1b"
   map_public_ip_on_launch = true
+
+  tags = {
+    Name = "${var.environment}-public-subnet-2-v2"
+  }
 }
 
 resource "aws_subnet" "private_1" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = var.private_subnet_1_cidr
   availability_zone = "ap-south-1a"
+
+  tags = {
+    Name = "${var.environment}-private-subnet-1-v2"
+  }
 }
 
 resource "aws_subnet" "private_2" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = var.private_subnet_2_cidr
   availability_zone = "ap-south-1b"
+
+  tags = {
+    Name = "${var.environment}-private-subnet-2-v2"
+  }
 }
 
 # ---------------- INTERNET GATEWAY ----------------
 
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "${var.environment}-igw-v2"
+  }
 }
 
 # ---------------- ROUTE TABLE ----------------
@@ -67,7 +91,7 @@ resource "aws_route_table_association" "pub2" {
 # ---------------- SECURITY GROUPS ----------------
 
 resource "aws_security_group" "ecs_sg" {
-  name   = "ecs-sg"
+  name   = "${var.environment}-ecs-sg-v2"
   vpc_id = aws_vpc.main.id
 
   ingress {
@@ -86,7 +110,7 @@ resource "aws_security_group" "ecs_sg" {
 }
 
 resource "aws_security_group" "db_sg" {
-  name   = "db-sg"
+  name   = "${var.environment}-db-sg-v2"
   vpc_id = aws_vpc.main.id
 
   ingress {
@@ -107,10 +131,11 @@ resource "aws_security_group" "db_sg" {
 # ---------------- IAM ROLE ----------------
 
 resource "aws_iam_role" "ecs_execution_role" {
-  name = "${var.environment}-ecs-role-new"
+  name = "${var.environment}-ecs-role-v2"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
+
     Statement = [{
       Effect = "Allow"
       Action = "sts:AssumeRole"
@@ -127,28 +152,24 @@ resource "aws_iam_role_policy_attachment" "ecs_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-# ---------------- CLOUDWATCH LOGS ----------------
+# ---------------- CLOUDWATCH ----------------
 
 resource "aws_cloudwatch_log_group" "ecs_logs" {
-  name              = "/ecs/app"
+  name              = "/ecs/app-v2"
   retention_in_days = 7
 }
 
 # ---------------- ECS CLUSTER ----------------
 
 resource "aws_ecs_cluster" "main" {
-  name = "${var.environment}-cluster"
+  name = "${var.environment}-cluster-v2"
 }
 
-# ---------------- TASK DEFINITION ----------------
+# ---------------- ECS TASK ----------------
 
 resource "aws_ecs_task_definition" "app" {
 
-  depends_on = [
-    aws_cloudwatch_log_group.ecs_logs
-  ]
-
-  family                   = "${var.environment}-task"
+  family                   = "${var.environment}-task-v2"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
 
@@ -159,9 +180,8 @@ resource "aws_ecs_task_definition" "app" {
 
   container_definitions = jsonencode([
     {
-      name  = "app"
-      image = "nginx"
-
+      name      = "app"
+      image     = "nginx"
       essential = true
 
       portMappings = [
@@ -176,7 +196,7 @@ resource "aws_ecs_task_definition" "app" {
         logDriver = "awslogs"
 
         options = {
-          awslogs-group         = aws_cloudwatch_log_group.ecs_logs.name
+          awslogs-group         = "/ecs/app-v2"
           awslogs-region        = var.region
           awslogs-stream-prefix = "ecs"
         }
@@ -185,10 +205,10 @@ resource "aws_ecs_task_definition" "app" {
   ])
 }
 
-# ---------------- LOAD BALANCER ----------------
+# ---------------- ALB ----------------
 
 resource "aws_lb" "app" {
-  name               = "${var.environment}-alb"
+  name               = "${var.environment}-alb-v2"
   load_balancer_type = "application"
 
   subnets = [
@@ -204,7 +224,7 @@ resource "aws_lb" "app" {
 # ---------------- TARGET GROUP ----------------
 
 resource "aws_lb_target_group" "tg" {
-  name        = "dev-tg"
+  name        = "${var.environment}-tg-v2"
   port        = 80
   protocol    = "HTTP"
   target_type = "ip"
@@ -232,7 +252,8 @@ resource "aws_lb_listener" "listener" {
 # ---------------- ECS SERVICE ----------------
 
 resource "aws_ecs_service" "app" {
-  name            = "${var.environment}-service"
+
+  name            = "${var.environment}-service-v2"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.app.arn
   launch_type     = "FARGATE"
@@ -266,7 +287,7 @@ resource "aws_ecs_service" "app" {
 # ---------------- DATABASE ----------------
 
 resource "aws_db_subnet_group" "db_subnet" {
-  name = "postgres-subnet-group"
+  name = "postgres-subnet-group-v2"
 
   subnet_ids = [
     aws_subnet.private_1.id,
@@ -275,7 +296,7 @@ resource "aws_db_subnet_group" "db_subnet" {
 }
 
 resource "aws_db_instance" "postgres" {
-  identifier        = "${var.environment}-db"
+  identifier        = "${var.environment}-db-v2"
   engine            = "postgres"
   instance_class    = "db.t3.micro"
   allocated_storage = 20
